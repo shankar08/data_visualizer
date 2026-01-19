@@ -21,33 +21,30 @@ if str(BASE_DIR) not in sys.path:
 
 from templates.template import TEMPLATE_REGISTRY
 
+# Import chatbot components
+from frontend.chatbot.chart_modifier import ChartModifierAgent
+from frontend.chatbot.style_updater import StyleUpdater
+
 
 def main():
-
     # =====================================================
     # HELPER FUNCTION: Apply VBA-matching Chart Formatting
     # =====================================================
     def apply_vba_formatting(chart, template_style):
         """
-        Applies all VBA formatting to openpyxl chart object:
-        - Removes title
-        - Sets gap width to 50%
-        - Formats axes (lines, tick marks, fonts)
-        - Formats legend
-        - Removes gridlines
+        Applies all VBA formatting to openpyxl chart object
         """
         from openpyxl.chart.shapes import GraphicalProperties
         from openpyxl.drawing.text import Font as DrawingFont
         
-        # 1. REMOVE TITLE (VBA: ch.HasTitle = False)
+        # 1. REMOVE TITLE
         chart.title = None
         
-        # 2. SET GAP WIDTH = 50% (VBA: cg.GapWidth = 50)
+        # 2. SET GAP WIDTH = 50%
         if hasattr(chart, 'gapWidth'):
             chart.gapWidth = 50
         
         # 3. AXIS FORMATTING
-        # Convert hex colors to RGB tuples
         def hex_to_rgb(hex_color):
             hex_color = hex_color.lstrip('#')
             return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
@@ -55,30 +52,21 @@ def main():
         axis_line_rgb = hex_to_rgb(template_style["axis_line_color"])
         axis_text_rgb = hex_to_rgb(template_style["axis_color"])
         
-        # Format both X and Y axes
         for axis in [chart.x_axis, chart.y_axis]:
-            # Remove major gridlines (VBA: HasMajorGridlines = False)
             axis.majorGridlines = None
             
-            # Axis line formatting (VBA: Format.Line properties)
             if axis.spPr is None:
                 axis.spPr = GraphicalProperties()
             
-            # Create line with proper color
-            line_props = LineProperties(
-                w=6350  # 0.5pt in EMUs (VBA: Weight = 0.5)
-            )
-            # Set color using ColorChoice with srgbClr
+            line_props = LineProperties(w=6350)
             line_props.solidFill = ColorChoice(
                 srgbClr=f'{axis_line_rgb[0]:02X}{axis_line_rgb[1]:02X}{axis_line_rgb[2]:02X}'
             )
             axis.spPr.ln = line_props
             
-            # Tick marks (VBA: MajorTickMark = xlTickMarkOutside)
             axis.majorTickMark = "out"
             axis.minorTickMark = None
             
-            # Tick label font formatting (VBA: TickLabels.Font)
             if axis.txPr is None:
                 axis.txPr = RichText()
             if axis.txPr.p is None:
@@ -90,19 +78,17 @@ def main():
             if para.pPr.defRPr is None:
                 para.pPr.defRPr = CharacterProperties()
             
-            # Set font: Roboto, size 7, RGB(64,64,64)
             if para.pPr.defRPr.latin is None:
                 para.pPr.defRPr.latin = DrawingFont(typeface=template_style["font_family"])
             else:
                 para.pPr.defRPr.latin.typeface = template_style["font_family"]
             
-            para.pPr.defRPr.sz = template_style["font_size"] * 100  # Points to hundredths
-            # Use ColorChoice for text color
+            para.pPr.defRPr.sz = template_style["font_size"] * 100
             para.pPr.defRPr.solidFill = ColorChoice(
                 srgbClr=f'{axis_text_rgb[0]:02X}{axis_text_rgb[1]:02X}{axis_text_rgb[2]:02X}'
             )
         
-        # 4. LEGEND FORMATTING (VBA: Legend.Font)
+        # 4. LEGEND FORMATTING
         if chart.legend:
             if chart.legend.txPr is None:
                 chart.legend.txPr = RichText()
@@ -115,14 +101,12 @@ def main():
             if para.pPr.defRPr is None:
                 para.pPr.defRPr = CharacterProperties()
             
-            # Set font properly
             if para.pPr.defRPr.latin is None:
                 para.pPr.defRPr.latin = DrawingFont(typeface=template_style["font_family"])
             else:
                 para.pPr.defRPr.latin.typeface = template_style["font_family"]
             
             para.pPr.defRPr.sz = template_style["font_size"] * 100
-            # Use ColorChoice for text color
             para.pPr.defRPr.solidFill = ColorChoice(
                 srgbClr=f'{axis_text_rgb[0]:02X}{axis_text_rgb[1]:02X}{axis_text_rgb[2]:02X}'
             )
@@ -130,25 +114,42 @@ def main():
     # =====================================================
     # PATH SETUP FOR FONTS
     # =====================================================
-    # Since app.py is in frontend/ and fonts are in frontend/fonts/
     FONTS_DIR = Path(__file__).resolve().parent / "fonts"
     ROBOTO_PATH = FONTS_DIR / "Roboto-Regular.ttf"
 
     if ROBOTO_PATH.exists():
         fm.fontManager.addfont(str(ROBOTO_PATH))
         plt.rcParams["font.family"] = "Roboto"
-    else:
-        st.warning(f"Roboto font not found at {ROBOTO_PATH}, using default font.")
 
     # =====================================================
     # PAGE CONFIG
     # =====================================================
-    st.set_page_config(page_title="Excel Branded Charts", layout="wide")
-    st.title("📊 Excel → Branded Dynamic Chart Generator")
+    st.set_page_config(page_title="Excel Branded Charts with AI", layout="wide")
+    st.title("📊 Excel Chart Generator with AI Assistant")
 
     # =====================================================
-    # TEMPLATE SELECTION
+    # SESSION STATE INITIALIZATION
     # =====================================================
+    if 'custom_style' not in st.session_state:
+        st.session_state.custom_style = None
+    
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    
+    if 'agent' not in st.session_state:
+        st.session_state.agent = None
+
+    # =====================================================
+    # SIDEBAR - API KEY & TEMPLATE SELECTION
+    # =====================================================
+    st.sidebar.header("🔑 API Configuration")
+    api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="Enter your OpenAI API key for AI chat features")
+    
+    if api_key and st.session_state.agent is None:
+        st.session_state.agent = ChartModifierAgent(api_key)
+        st.sidebar.success("✅ AI Assistant activated!")
+    
+    st.sidebar.divider()
     st.sidebar.header("📄 Report Template")
     selected_template = st.sidebar.selectbox(
         "Select Report Template",
@@ -157,14 +158,87 @@ def main():
     template_config = TEMPLATE_REGISTRY[selected_template]
     st.sidebar.caption(template_config["description"])
 
-    TEMPLATE_STYLE = template_config["style"]
+    # Use custom style if available, otherwise use template style
+    if st.session_state.custom_style is not None:
+        TEMPLATE_STYLE = st.session_state.custom_style
+        st.sidebar.info("🎨 Using AI-customized style")
+    else:
+        TEMPLATE_STYLE = template_config["style"]
 
     st.sidebar.divider()
     st.sidebar.header("📂 Import & Chart Settings")
     uploaded_file = st.sidebar.file_uploader("Upload Excel", type=["xlsx"])
 
     # =====================================================
-    # MAIN APP
+    # AI CHAT INTERFACE (Top of main area)
+    # =====================================================
+    if api_key:
+        st.subheader("🤖 AI Chart Assistant")
+        st.caption("Ask me to modify your chart styling in plain English!")
+        
+        # Chat input
+        col1, col2 = st.columns([5, 1])
+        with col1:
+            user_message = st.text_input(
+                "Ask to modify chart style",
+                placeholder="e.g., 'Change bar color to gray' or 'Make font Arial size 10'",
+                key="chat_input"
+            )
+        with col2:
+            if st.button("Send", use_container_width=True):
+                if user_message and st.session_state.agent:
+                    # Process the command
+                    current_style = TEMPLATE_STYLE
+                    modifications = st.session_state.agent.process_command(user_message, current_style)
+                    
+                    if modifications:
+                        # Apply modifications
+                        new_style = StyleUpdater.apply_modifications(current_style, modifications)
+                        st.session_state.custom_style = new_style
+                        
+                        # Add to chat history
+                        st.session_state.chat_history.append({
+                            "role": "user",
+                            "content": user_message
+                        })
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": f"✅ Applied changes: {', '.join(modifications.keys())}"
+                        })
+                        
+                        st.rerun()
+                    else:
+                        st.error("Could not understand the command. Please try rephrasing.")
+        
+        # Display chat history
+        if st.session_state.chat_history:
+            with st.expander("💬 Chat History", expanded=False):
+                for msg in st.session_state.chat_history:
+                    if msg["role"] == "user":
+                        st.markdown(f"**You:** {msg['content']}")
+                    else:
+                        st.markdown(f"**AI:** {msg['content']}")
+        
+        # Reset buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🔄 Reset to Template Style"):
+                st.session_state.custom_style = None
+                st.session_state.chat_history = []
+                if st.session_state.agent:
+                    st.session_state.agent.reset_conversation()
+                st.rerun()
+        with col2:
+            if st.button("🗑️ Clear Chat History"):
+                st.session_state.chat_history = []
+                if st.session_state.agent:
+                    st.session_state.agent.reset_conversation()
+                st.rerun()
+        
+        st.divider()
+
+    # =====================================================
+    # MAIN APP (Rest of your existing code)
     # =====================================================
     if uploaded_file:
         df = pd.read_excel(uploaded_file)
@@ -176,7 +250,6 @@ def main():
             "Aggregation", ["None", "Sum", "Mean", "Count"]
         )
 
-        # Chart Type Defaults
         default_chart_type = template_config.get("default_chart_type", "Bar Chart")
         chart_type = st.sidebar.selectbox(
             "Chart Type",
@@ -184,7 +257,6 @@ def main():
             index=["Bar Chart", "Line Chart", "Pie Chart"].index(default_chart_type)
         )
 
-        # Y-axis defaults
         default_primary = [c for c in template_config.get("default_primary_y", []) if c in numeric_cols]
         default_secondary = [c for c in template_config.get("default_secondary_y", []) if c in numeric_cols]
 
@@ -207,15 +279,9 @@ def main():
                 default=default_secondary
             )
 
-        # =====================================================
-        # DATA EDITOR
-        # =====================================================
         st.subheader("📝 Edit Data")
         edited_df = st.data_editor(df, use_container_width=True)
 
-        # =====================================================
-        # AGGREGATION
-        # =====================================================
         if aggregation != "None":
             if aggregation == "Sum":
                 plot_df = edited_df.groupby(col_x)[numeric_cols].sum().reset_index()
@@ -226,10 +292,20 @@ def main():
         else:
             plot_df = edited_df.copy()
 
-        # =====================================================
-        # STREAMLIT PREVIEW — TEMPLATE STYLED
-        # =====================================================
-        st.subheader("👀 Chart Preview (Template Style)")
+        # Show current style settings
+        with st.expander("🎨 Current Style Settings"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.write(f"**Font:** {TEMPLATE_STYLE['font_family']} {TEMPLATE_STYLE['font_size']}pt")
+                st.write(f"**Grid:** {'On' if TEMPLATE_STYLE['grid'] else 'Off'}")
+            with col2:
+                st.color_picker("Primary Color", TEMPLATE_STYLE["primary_color"], disabled=True)
+                st.color_picker("Axis Line", TEMPLATE_STYLE["axis_line_color"], disabled=True)
+            with col3:
+                st.color_picker("Secondary Color", TEMPLATE_STYLE.get("secondary_color", "#ff7f0e"), disabled=True)
+                st.color_picker("Axis Text", TEMPLATE_STYLE["axis_color"], disabled=True)
+
+        st.subheader("👀 Chart Preview")
 
         plt.rcParams.update({
             "font.size": TEMPLATE_STYLE["font_size"]
@@ -252,7 +328,7 @@ def main():
                             label=col,
                             color=TEMPLATE_STYLE["primary_color"],
                             alpha=0.85,
-                            width=0.5)  # Gap width equivalent
+                            width=0.5)
                 else:
                     ax1.plot(plot_df[col_x], plot_df[col],
                              label=col,
@@ -269,7 +345,7 @@ def main():
                              linestyle="--",
                              linewidth=1.2,
                              label=col,
-                             color=TEMPLATE_STYLE["secondary_color"])
+                             color=TEMPLATE_STYLE.get("secondary_color", "#ff7f0e"))
 
             ax1.legend(loc="upper left", frameon=False, fontsize=TEMPLATE_STYLE["font_size"])
             if ax2:
@@ -289,32 +365,25 @@ def main():
 
         st.pyplot(fig)
 
-        # =====================================================
-        # EXCEL EXPORT — FULLY VBA-MATCHED FORMATTING
-        # =====================================================
-        st.subheader("⬇️ Export Branded Excel (VBA-Matched Formatting)")
+        st.subheader("⬇️ Export Branded Excel")
 
         if st.button("Generate Excel Report"):
-
             wb = Workbook()
             ws = wb.active
             ws.title = template_config.get("sheet_name", "Data")
 
             number_formats = template_config.get("number_formats", {})
 
-            # Write headers
             for col_idx, col_name in enumerate(plot_df.columns, start=1):
                 cell = ws.cell(row=1, column=col_idx, value=col_name)
                 cell.font = cell.font.copy(bold=True)
 
-            # Write data with number formatting
             for row_idx, row in enumerate(plot_df.itertuples(index=False), start=2):
                 for col_idx, (col_name, value) in enumerate(zip(plot_df.columns, row), start=1):
                     cell = ws.cell(row=row_idx, column=col_idx, value=value)
                     if col_name in number_formats:
                         cell.number_format = number_formats[col_name]
 
-            # Create Table
             end_row = ws.max_row
             end_col = ws.max_column
             table_ref = f"A1:{ws.cell(row=end_row, column=end_col).coordinate}"
@@ -327,9 +396,6 @@ def main():
             table.tableStyleInfo = style
             ws.add_table(table)
 
-            # -----------------------------
-            # Add chart with VBA formatting
-            # -----------------------------
             x_idx = 1
             chart_pos = template_config.get("chart_position", "G2")
             chart_type_to_use = template_config.get("default_chart_type", chart_type)
@@ -337,25 +403,20 @@ def main():
             if chart_type_to_use in ["Bar Chart", "Line Chart"]:
                 chart = BarChart() if chart_type_to_use == "Bar Chart" else LineChart()
                 
-                # No title (VBA: HasTitle = False) - will be removed in apply_vba_formatting
                 chart.y_axis.title = None
                 chart.x_axis.title = None
 
-                # Primary series
                 for idx, col_name in enumerate(primary_y):
                     y_idx = plot_df.columns.get_loc(col_name) + 1
                     data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
                     chart.add_data(data, titles_from_data=True)
                     
-                    # Apply primary color
                     if chart.series and idx < len(chart.series):
                         chart.series[idx].graphicalProperties.solidFill = TEMPLATE_STYLE["primary_color"].lstrip("#")
 
-                # Categories
                 cats = Reference(ws, min_col=x_idx, min_row=2, max_row=end_row)
                 chart.set_categories(cats)
 
-                # Secondary series
                 if secondary_y:
                     sec_chart = LineChart()
                     sec_chart.y_axis.axId = 200
@@ -365,15 +426,12 @@ def main():
                         data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
                         sec_chart.add_data(data, titles_from_data=True)
                         
-                        # Apply secondary color
                         if sec_chart.series and idx < len(sec_chart.series):
-                            sec_chart.series[idx].graphicalProperties.solidFill = TEMPLATE_STYLE["secondary_color"].lstrip("#")
+                            sec_chart.series[idx].graphicalProperties.solidFill = TEMPLATE_STYLE.get("secondary_color", "#ff7f0e").lstrip("#")
 
-                    # Apply VBA formatting to secondary chart too
                     apply_vba_formatting(sec_chart, TEMPLATE_STYLE)
                     chart += sec_chart
                 
-                # Apply all VBA formatting
                 apply_vba_formatting(chart, TEMPLATE_STYLE)
                 
             else:
@@ -384,41 +442,28 @@ def main():
                 chart.add_data(data, titles_from_data=True)
                 chart.set_categories(labels)
                 
-                # Pie charts don't have gap width, but apply other formatting
                 chart.title = None
                 if chart.legend:
                     apply_vba_formatting(chart, TEMPLATE_STYLE)
 
             ws.add_chart(chart, chart_pos)
 
-            # Export Excel
             output = BytesIO()
             wb.save(output)
             output.seek(0)
 
-            st.success("✅ VBA-matched branded Excel file generated with:")
-            st.markdown("""
-            - ✅ Gap Width = 50%
-            - ✅ No chart title
-            - ✅ No gridlines
-            - ✅ Axis lines: 0.5pt weight, custom color
-            - ✅ Tick marks: Outside
-            - ✅ Fonts: Roboto, size 7, custom colors
-            - ✅ Legend formatted
-            """)
+            st.success("✅ Excel file generated with AI-customized styling!")
             
             st.download_button(
                 "⬇️ Download Excel Report",
                 data=output,
-                file_name="vba_matched_excel_report.xlsx",
+                file_name="ai_customized_excel_report.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
     else:
-        st.info("Upload an Excel file from the sidebar to begin.")
+        st.info("📤 Upload an Excel file from the sidebar to begin.")
 
-# =====================================================
-# RUN MAIN IF EXECUTED DIRECTLY
-# =====================================================
+
 if __name__ == "__main__":
     main()
