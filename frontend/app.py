@@ -144,7 +144,7 @@ def main():
     # PAGE CONFIG
     # =====================================================
     st.set_page_config(page_title="Excel Branded Charts", layout="wide")
-    st.title("📊 Excel → Branded Dynamic Chart Generator (VBA-Matched)")
+    st.title("📊 Excel → Branded Dynamic Chart Generator")
 
     # =====================================================
     # TEMPLATE SELECTION
