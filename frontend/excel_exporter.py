@@ -1,67 +1,140 @@
-# src/frontend/excel_exporter.py
-import pandas as pd
+"""Excel export functionality"""
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.chart import BarChart, LineChart, PieChart, Reference
+from openpyxl.chart.label import DataLabelList
+from .chart_formatter import apply_vba_formatting
 
-# =====================================================
-# EXPORT DATA & CHART TO EXCEL
-# =====================================================
-def export_excel(df: pd.DataFrame, chart_type: str, primary_y: list, secondary_y: list,
-                 chart_title: str = "", table_style="TableStyleMedium9", chart_position="G2") -> BytesIO:
 
+def create_excel_report(plot_df, col_x, primary_y, secondary_y, chart_type, 
+                       template_config, template_style):
+    """
+    Create and export Excel workbook with styled chart
+    
+    Returns: BytesIO object with Excel file
+    """
     wb = Workbook()
     ws = wb.active
-    ws.title = "Data"
+    ws.title = template_config.get("sheet_name", "Data")
 
-    # ------------------
-    # Write header
-    # ------------------
-    for col_idx, col_name in enumerate(df.columns, start=1):
+    number_formats = template_config.get("number_formats", {})
+    numeric_cols = plot_df.select_dtypes(include=["number"]).columns.tolist()
+
+    # Write headers
+    for col_idx, col_name in enumerate(plot_df.columns, start=1):
         cell = ws.cell(row=1, column=col_idx, value=col_name)
         cell.font = cell.font.copy(bold=True)
 
-    # ------------------
     # Write data
-    # ------------------
-    for row_idx, row in enumerate(df.itertuples(index=False), start=2):
-        for col_idx, value in enumerate(row, start=1):
-            ws.cell(row=row_idx, column=col_idx, value=value)
+    for row_idx, row in enumerate(plot_df.itertuples(index=False), start=2):
+        for col_idx, (col_name, value) in enumerate(zip(plot_df.columns, row), start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            if col_name in number_formats:
+                cell.number_format = number_formats[col_name]
 
-    # ------------------
-    # Add Table
-    # ------------------
-    end_row, end_col = ws.max_row, ws.max_column
-    table = Table(displayName="DataTable", ref=f"A1:{ws.cell(end_row, end_col).coordinate}")
-    table.tableStyleInfo = TableStyleInfo(name=table_style, showRowStripes=True)
+    end_row = ws.max_row
+    end_col = ws.max_column
+    table_ref = f"A1:{ws.cell(row=end_row, column=end_col).coordinate}"
+    table = Table(displayName="DataTable", ref=table_ref)
+    style = TableStyleInfo(
+        name=template_config.get("table_style", "TableStyleMedium9"),
+        showRowStripes=True,
+        showColumnStripes=False
+    )
+    table.tableStyleInfo = style
     ws.add_table(table)
 
-    # ------------------
-    # Add Chart
-    # ------------------
-    if chart_type == "Bar Chart":
-        chart = BarChart()
-    elif chart_type == "Line Chart":
-        chart = LineChart()
-    else:
-        chart = PieChart()
+    # Create and format chart
+    chart = create_chart(ws, plot_df, col_x, primary_y, secondary_y, 
+                        chart_type, template_style, end_row)
+    
+    chart_pos = template_config.get("chart_position", "G2")
+    if chart:
+        ws.add_chart(chart, chart_pos)
 
-    chart.title = chart_title or chart_type
-    for col in primary_y:
-        idx = df.columns.get_loc(col) + 1
-        data = Reference(ws, min_col=idx, min_row=1, max_row=end_row)
-        chart.add_data(data, titles_from_data=True)
-
-    cats = Reference(ws, min_col=1, min_row=2, max_row=end_row)
-    chart.set_categories(cats)
-
-    ws.add_chart(chart, chart_position)
-
-    # ------------------
-    # Save to BytesIO
-    # ------------------
     output = BytesIO()
     wb.save(output)
     output.seek(0)
     return output
+
+
+def create_chart(ws, plot_df, col_x, primary_y, secondary_y, chart_type, 
+                template_style, end_row):
+    """Create styled chart based on chart type"""
+    chart = None
+    x_idx = 1
+    
+    if chart_type in ["Bar Chart", "Line Chart"]:
+        chart = BarChart() if chart_type == "Bar Chart" else LineChart()
+        apply_vba_formatting(chart, template_style)
+
+        if template_style.get("chart_title"):
+            chart.title = template_style["chart_title"]
+        else:
+            chart.title = None
+
+        # Primary axis titles
+        if template_style.get("x_axis_title"):
+            chart.x_axis.title = template_style["x_axis_title"]
+
+        if template_style.get("y_axis_title"):
+            chart.y_axis.title = template_style["y_axis_title"]
+
+        # Add primary data
+        for idx, col_name in enumerate(primary_y):
+            y_idx = plot_df.columns.get_loc(col_name) + 1
+            data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
+            chart.add_data(data, titles_from_data=True)
+            
+            if chart.series and idx < len(chart.series):
+                primary_color = template_style["primary_color"].lstrip("#")
+                chart.series[idx].graphicalProperties.solidFill = primary_color
+
+        # Set categories
+        cats = Reference(ws, min_col=x_idx, min_row=2, max_row=end_row)
+        chart.set_categories(cats)
+
+        # Add secondary data if exists
+        if secondary_y:
+            sec_chart = LineChart()
+            sec_chart.y_axis.axId = 200
+            
+            if template_style.get("secondary_y_axis_title"):
+                sec_chart.y_axis.title = template_style["secondary_y_axis_title"]
+            
+            for idx, col_name in enumerate(secondary_y):
+                y_idx = plot_df.columns.get_loc(col_name) + 1
+                data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
+                sec_chart.add_data(data, titles_from_data=True)
+                
+                if sec_chart.series and idx < len(sec_chart.series):
+                    secondary_color = template_style.get("secondary_color", "#ff7f0e").lstrip("#")
+                    sec_chart.series[idx].graphicalProperties.solidFill = secondary_color
+
+            apply_vba_formatting(sec_chart, template_style)
+            chart += sec_chart
+    
+    else:
+        # PIE CHART
+        chart = PieChart()
+        y_idx = plot_df.columns.get_loc(primary_y[0]) + 1
+        data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
+        labels = Reference(ws, min_col=x_idx, min_row=2, max_row=end_row)
+        chart.add_data(data, titles_from_data=True)
+        chart.set_categories(labels)
+        
+        if template_style.get("chart_title"):
+            chart.title = template_style["chart_title"]
+        else:
+            chart.title = None
+        
+        # Add data labels to pie chart
+        if chart.series:
+            chart.series[0].dLbls = DataLabelList()
+            chart.series[0].dLbls.showVal = True
+            chart.series[0].dLbls.showPercent = True
+        
+        apply_vba_formatting(chart, template_style)
+    
+    return chart
