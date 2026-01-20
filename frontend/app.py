@@ -13,13 +13,23 @@ from openpyxl.chart.text import RichText
 from openpyxl.drawing.text import Paragraph, ParagraphProperties, CharacterProperties, RichTextProperties
 from pathlib import Path
 import sys
+import os
+from dotenv import load_dotenv
+from templates.template import TEMPLATE_REGISTRY
 
 # Add project root to path for imports (MUST be before template import)
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from templates.template import TEMPLATE_REGISTRY
+
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+if not OPENAI_API_KEY:
+    st.error("❌ OPENAI_API_KEY not loaded from .env")
+else:
+    st.success("✅ OPENAI_API_KEY loaded successfully")
 
 # Import chatbot components
 from frontend.chatbot.chart_modifier import ChartModifierAgent
@@ -140,15 +150,23 @@ def main():
         st.session_state.agent = None
 
     # =====================================================
-    # SIDEBAR - API KEY & TEMPLATE SELECTION
+    # AI AGENT INITIALIZATION (FROM .env)
     # =====================================================
-    st.sidebar.header("🔑 API Configuration")
-    api_key = st.sidebar.text_input("OpenAI API Key", type="password", help="Enter your OpenAI API key for AI chat features")
-    
-    if api_key and st.session_state.agent is None:
-        st.session_state.agent = ChartModifierAgent(api_key)
-        st.sidebar.success("✅ AI Assistant activated!")
-    
+    if st.session_state.agent is None:
+        if not OPENAI_API_KEY:
+            st.warning("❌ OPENAI_API_KEY not found in .env")
+        else:
+            try:
+                st.session_state.agent = ChartModifierAgent()
+            except Exception as e:
+                st.session_state.agent = None
+                st.error("❌ Failed to initialize AI Assistant")
+                st.exception(e)
+
+    # =====================================================
+    # SIDEBAR -TEMPLATE SELECTION
+    # =====================================================
+
     st.sidebar.divider()
     st.sidebar.header("📄 Report Template")
     selected_template = st.sidebar.selectbox(
@@ -169,73 +187,6 @@ def main():
     st.sidebar.header("📂 Import & Chart Settings")
     uploaded_file = st.sidebar.file_uploader("Upload Excel", type=["xlsx"])
 
-    # =====================================================
-    # AI CHAT INTERFACE (Top of main area)
-    # =====================================================
-    if api_key:
-        st.subheader("🤖 AI Chart Assistant")
-        st.caption("Ask me to modify your chart styling in plain English!")
-        
-        # Chat input
-        col1, col2 = st.columns([5, 1])
-        with col1:
-            user_message = st.text_input(
-                "Ask to modify chart style",
-                placeholder="e.g., 'Change bar color to gray' or 'Make font Arial size 10'",
-                key="chat_input"
-            )
-        with col2:
-            if st.button("Send", use_container_width=True):
-                if user_message and st.session_state.agent:
-                    # Process the command
-                    current_style = TEMPLATE_STYLE
-                    modifications = st.session_state.agent.process_command(user_message, current_style)
-                    
-                    if modifications:
-                        # Apply modifications
-                        new_style = StyleUpdater.apply_modifications(current_style, modifications)
-                        st.session_state.custom_style = new_style
-                        
-                        # Add to chat history
-                        st.session_state.chat_history.append({
-                            "role": "user",
-                            "content": user_message
-                        })
-                        st.session_state.chat_history.append({
-                            "role": "assistant",
-                            "content": f"✅ Applied changes: {', '.join(modifications.keys())}"
-                        })
-                        
-                        st.rerun()
-                    else:
-                        st.error("Could not understand the command. Please try rephrasing.")
-        
-        # Display chat history
-        if st.session_state.chat_history:
-            with st.expander("💬 Chat History", expanded=False):
-                for msg in st.session_state.chat_history:
-                    if msg["role"] == "user":
-                        st.markdown(f"**You:** {msg['content']}")
-                    else:
-                        st.markdown(f"**AI:** {msg['content']}")
-        
-        # Reset buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🔄 Reset to Template Style"):
-                st.session_state.custom_style = None
-                st.session_state.chat_history = []
-                if st.session_state.agent:
-                    st.session_state.agent.reset_conversation()
-                st.rerun()
-        with col2:
-            if st.button("🗑️ Clear Chat History"):
-                st.session_state.chat_history = []
-                if st.session_state.agent:
-                    st.session_state.agent.reset_conversation()
-                st.rerun()
-        
-        st.divider()
 
     # =====================================================
     # MAIN APP (Rest of your existing code)
@@ -464,6 +415,80 @@ def main():
     else:
         st.info("📤 Upload an Excel file from the sidebar to begin.")
 
+    # =====================================================
+    # 🤖 AI CHAT ASSISTANT (ALWAYS AT BOTTOM)
+    # =====================================================
+    st.divider()
+    st.subheader("🤖 AI Chart Assistant")
+    st.caption("Modify the chart using plain English. Changes apply instantly.")
+
+    if st.session_state.agent is None:
+        st.warning("AI Assistant is not available. Check OPENAI_API_KEY.")
+    else:
+        chat_container = st.container()
+
+        with chat_container:
+            # Chat input
+            col1, col2 = st.columns([6, 1])
+            with col1:
+                user_message = st.text_input(
+                    "Type a command (e.g. 'chart title Hello', 'remove grid', 'make font Arial 10')",
+                    key="chat_input_bottom"
+                )
+            with col2:
+                send = st.button("Send", width="stretch")
+
+            if send and user_message.strip():
+                current_style = TEMPLATE_STYLE
+                modifications = st.session_state.agent.process_command(
+                    user_message,
+                    current_style
+                )
+
+                if modifications:
+                    new_style = StyleUpdater.apply_modifications(
+                        current_style,
+                        modifications
+                    )
+                    st.session_state.custom_style = new_style
+
+                    st.session_state.chat_history.append(
+                        {"role": "user", "content": user_message}
+                    )
+                    st.session_state.chat_history.append(
+                        {
+                            "role": "assistant",
+                            "content": f"✅ Applied: {', '.join(modifications.keys())}"
+                        }
+                    )
+
+                    st.rerun()
+                else:
+                    st.error("❌ I couldn’t understand that command.")
+
+            # Chat history
+            if st.session_state.chat_history:
+                with st.expander("💬 Conversation", expanded=False):
+                    for msg in st.session_state.chat_history:
+                        if msg["role"] == "user":
+                            st.markdown(f"**You:** {msg['content']}")
+                        else:
+                            st.markdown(f"**AI:** {msg['content']}")
+
+            # Controls
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("🔄 Reset Style"):
+                    st.session_state.custom_style = None
+                    st.session_state.chat_history = []
+                    st.session_state.agent.reset_conversation()
+                    st.rerun()
+
+            with c2:
+                if st.button("🗑️ Clear Chat"):
+                    st.session_state.chat_history = []
+                    st.session_state.agent.reset_conversation()
+                    st.rerun()
 
 if __name__ == "__main__":
     main()
