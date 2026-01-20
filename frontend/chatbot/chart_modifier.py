@@ -1,122 +1,136 @@
 """
-Chart modification agent using LangChain and GPT-4
-Handles natural language commands to modify chart styling
+Chart modification agent using LangChain + OpenAI
+Interprets natural language commands to modify chart styling
 """
 
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.output_parsers import JsonOutputParser
 from typing import Dict, List, Any
 import json
 
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.output_parsers import JsonOutputParser
+
 
 class ChartModifierAgent:
-    """Agent that interprets natural language commands to modify chart styling"""
-    
+    """
+    Agent that interprets natural language chart styling commands
+    and converts them into structured JSON style modifications.
+    """
+
     def __init__(self, api_key: str, model: str = "gpt-4o"):
-        """
-        Initialize the chart modifier agent
-        
-        Args:
-            api_key: OpenAI API key
-            model: Model name (default: gpt-4o)
-        """
         self.llm = ChatOpenAI(
             model=model,
             api_key=api_key,
             temperature=0.1
         )
-        
-        self.system_prompt = """You are a helpful chart styling assistant. You help users modify Excel chart styling by interpreting their natural language requests.
 
-Your job is to convert user requests into a JSON object with specific styling parameters.
+        # IMPORTANT:
+        # All JSON examples use double braces {{ }} so LangChain
+        # does NOT treat them as template variables
+        self.system_prompt = """You are a chart styling assistant.
 
-Available parameters to modify:
-1. "font_family": Font name (e.g., "Roboto", "Arial", "Calibri", "Times New Roman")
-2. "font_size": Font size in points (e.g., 7, 8, 10, 12)
-3. "axis_line_color": Hex color for axis lines (e.g., "#BFBFBF", "#000000", "#808080")
-4. "axis_color": Hex color for axis text (e.g., "#404040", "#000000")
-5. "primary_color": Hex color for primary series (e.g., "#1f77b4", "#FF0000", "#00FF00")
-6. "secondary_color": Hex color for secondary series (e.g., "#ff7f0e")
-7. "grid": Boolean to show/hide gridlines (true or false)
+You translate user chart styling instructions into a JSON object.
 
-Common color names to hex mappings:
-- gray/grey: "#808080", light gray: "#D3D3D3", dark gray: "#404040"
-- black: "#000000", white: "#FFFFFF"
-- red: "#FF0000", green: "#00FF00", blue: "#0000FF"
-- orange: "#FFA500", yellow: "#FFFF00", purple: "#800080"
+Available parameters:
+- "font_family": string
+- "font_size": integer (6–72)
+- "axis_line_color": hex color
+- "axis_color": hex color
+- "primary_color": hex color
+- "secondary_color": hex color
+- "grid": boolean
 
-IMPORTANT RULES:
-1. Only include parameters that the user wants to change
-2. Do NOT include parameters that weren't mentioned
-3. Always use hex color codes (with #)
-4. Font names should be capitalized properly
-5. Return ONLY a valid JSON object, nothing else
+Rules:
+1. Only include parameters explicitly requested
+2. Do NOT invent values
+3. Always return valid JSON
+4. Use hex colors (with #)
+5. Return NOTHING except the JSON object
+
+Color examples:
+- gray: "#808080"
+- light gray: "#D3D3D3"
+- dark gray: "#404040"
+- black: "#000000"
+- red: "#FF0000"
+- blue: "#0000FF"
 
 Examples:
 
-User: "Change the bar color to gray"
-Response: {"primary_color": "#808080"}
+User: Change bar color to gray
+Response: {{ "primary_color": "#808080" }}
 
-User: "Make the font Arial size 10"
-Response: {"font_family": "Arial", "font_size": 10}
+User: Use Arial font size 10
+Response: {{ "font_family": "Arial", "font_size": 10 }}
 
-User: "Turn off gridlines and make axis lines black"
-Response: {"grid": false, "axis_line_color": "#000000"}
+User: Remove gridlines
+Response: {{ "grid": false }}
 
-User: "Change primary bars to red and secondary to blue"
-Response: {"primary_color": "#FF0000", "secondary_color": "#0000FF"}
+User: Make axis labels black
+Response: {{ "axis_color": "#000000" }}
 
-User: "Use Calibri font"
-Response: {"font_family": "Calibri"}
+User: Change primary to red and secondary to blue
+Response: {{ "primary_color": "#FF0000", "secondary_color": "#0000FF" }}
 
-Now respond to the user's request:"""
+Now respond to the user's command.
+"""
+
+        self.prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", self.system_prompt),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{input}")
+            ]
+        )
 
         self.parser = JsonOutputParser()
-        
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{input}")
-        ])
-        
+
         self.chain = self.prompt | self.llm | self.parser
-        
+
         self.conversation_history: List[Any] = []
-    
+
     def process_command(self, user_input: str, current_style: Dict) -> Dict:
         """
-        Process a natural language command and return style modifications
-        
+        Convert natural language input into style modifications
+
         Args:
-            user_input: Natural language command from user
-            current_style: Current style configuration
-            
+            user_input: User instruction (e.g. "Add title Hello")
+            current_style: Current chart style (unused, but future-proof)
+
         Returns:
-            Dict with style updates to apply
+            Dict of style updates
         """
         try:
-            # Invoke the chain
-            result = self.chain.invoke({
-                "input": user_input,
-                "history": self.conversation_history
-            })
-            
-            # Add to conversation history
-            self.conversation_history.append(HumanMessage(content=user_input))
-            self.conversation_history.append(AIMessage(content=json.dumps(result)))
-            
-            # Keep only last 10 messages to avoid context overflow
+            result = self.chain.invoke(
+                {
+                    "input": user_input,
+                    "history": self.conversation_history
+                }
+            )
+
+            # Update conversation memory
+            self.conversation_history.append(
+                HumanMessage(content=user_input)
+            )
+            self.conversation_history.append(
+                AIMessage(content=json.dumps(result))
+            )
+
+            # Keep memory small & fast
             if len(self.conversation_history) > 10:
                 self.conversation_history = self.conversation_history[-10:]
-            
-            return result
-            
-        except Exception as e:
-            print(f"Error processing command: {e}")
+
+            # Guarantee dict output
+            if isinstance(result, dict):
+                return result
+
             return {}
-    
+
+        except Exception as e:
+            print(f"[ChartModifierAgent] Error: {e}")
+            return {}
+
     def reset_conversation(self):
-        """Reset conversation history"""
+        """Clear conversation history"""
         self.conversation_history = []
