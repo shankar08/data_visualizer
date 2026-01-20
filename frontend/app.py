@@ -26,11 +26,6 @@ if str(BASE_DIR) not in sys.path:
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not OPENAI_API_KEY:
-    st.error("❌ OPENAI_API_KEY not loaded from .env")
-else:
-    st.success("✅ OPENAI_API_KEY loaded successfully")
-
 # Import chatbot components
 from frontend.chatbot.chart_modifier import ChartModifierAgent
 from frontend.chatbot.style_updater import StyleUpdater
@@ -270,6 +265,13 @@ def main():
             ax1.spines[spine].set_linewidth(0.5)
         ax1.tick_params(axis="both", colors=TEMPLATE_STYLE["axis_color"], direction="out")
 
+        if TEMPLATE_STYLE.get("chart_title"):
+            ax1.set_title(
+            TEMPLATE_STYLE["chart_title"],
+            fontsize=TEMPLATE_STYLE["font_size"] + 2,
+            color=TEMPLATE_STYLE["axis_color"]
+            )
+
         ax2 = ax1.twinx() if secondary_y else None
 
         if chart_type in ["Bar Chart", "Line Chart"]:
@@ -313,7 +315,7 @@ def main():
             ax1.grid(False)
         else:
             ax1.grid(True, alpha=0.3)
-
+        
         st.pyplot(fig)
 
         st.subheader("⬇️ Export Branded Excel")
@@ -393,7 +395,10 @@ def main():
                 chart.add_data(data, titles_from_data=True)
                 chart.set_categories(labels)
                 
-                chart.title = None
+                if TEMPLATE_STYLE.get("chart_title"):
+                    chart.title = TEMPLATE_STYLE["chart_title"]
+                else:
+                    chart.title = None
                 if chart.legend:
                     apply_vba_formatting(chart, TEMPLATE_STYLE)
 

@@ -37,43 +37,47 @@ class ChartModifierAgent:
 
         self.system_prompt = """You are a chart styling assistant.
 
-You translate user chart styling instructions into a JSON object.
+                                You translate user chart styling instructions into a JSON object.
 
-Available parameters:
-- "font_family"
-- "font_size"
-- "axis_line_color"
-- "axis_color"
-- "primary_color"
-- "secondary_color"
-- "grid"
+                                Available parameters:
+                                - "font_family"
+                                - "font_size"
+                                - "axis_line_color"
+                                - "axis_color"
+                                - "primary_color"
+                                - "secondary_color"
+                                - "grid"
+                                - "chart_title"
 
-Rules:
-1. Only include parameters explicitly requested
-2. Do NOT invent values
-3. Always return valid JSON
-4. Use hex colors with #
-5. Return NOTHING except the JSON object
+                                Rules:
+                                1. Only include parameters explicitly requested
+                                2. Do NOT invent values
+                                3. Always return valid JSON
+                                4. Use hex colors with #
+                                5. Return NOTHING except the JSON object
 
-Examples:
+                                Examples:
 
-User: Change bar color to gray
-Response: {{ "primary_color": "#808080" }}
+                                User: Change bar color to gray
+                                Response: {{ "primary_color": "#808080" }}
 
-User: Use Arial font size 10
-Response: {{ "font_family": "Arial", "font_size": 10 }}
+                                User: Use Arial font size 10
+                                Response: {{ "font_family": "Arial", "font_size": 10 }}
 
-User: Remove gridlines
-Response: {{ "grid": false }}
+                                User: Remove gridlines
+                                Response: {{ "grid": false }}
 
-User: Make axis labels black
-Response: {{ "axis_color": "#000000" }}
+                                User: Make axis labels black
+                                Response: {{ "axis_color": "#000000" }}
 
-User: Change primary to red and secondary to blue
-Response: {{ "primary_color": "#FF0000", "secondary_color": "#0000FF" }}
+                                User: Change primary to red and secondary to blue
+                                Response: {{ "primary_color": "#FF0000", "secondary_color": "#0000FF" }}
 
-Now respond to the user's command.
-"""
+                                User: "Add title Sales Overview"
+                                Response: {{"chart_title": "Sales Overview"}}
+
+                                Now respond to the user's command.
+                                """
 
         self.prompt = ChatPromptTemplate.from_messages(
             [

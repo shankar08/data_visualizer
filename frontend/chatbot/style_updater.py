@@ -64,6 +64,11 @@ class StyleUpdater:
             if isinstance(modifications["grid"], bool):
                 valid_mods["grid"] = modifications["grid"]
         
+        # Validate chart title
+        if "chart_title" in modifications:
+            if isinstance(modifications["chart_title"], str):
+                valid_mods["chart_title"] = modifications["chart_title"]
+        
         return valid_mods
     
     @staticmethod
