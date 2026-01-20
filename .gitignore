@@ -1,6 +1,2 @@
-# Streamlit secrets
-.streamlit/secrets.toml
-
-# Env files
 .env
-.venv
+.streamlit/secrets.toml
