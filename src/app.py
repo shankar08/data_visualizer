@@ -14,13 +14,13 @@ if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
 # Import modules
-from frontend.config import OPENAI_API_KEY, ROBOTO_PATH
-from frontend.chatbot.chart_modifier import ChartModifierAgent
-from frontend.chatbot.style_updater import StyleUpdater
-from frontend.templates.template import TEMPLATE_REGISTRY
-from frontend.chart_formatter import apply_vba_formatting
-from frontend.excel_exporter import create_excel_report
-from frontend.ui_components import (
+from src.config import OPENAI_API_KEY, ROBOTO_PATH
+from src.chatbot.chart_modifier import ChartModifierAgent
+from src.chatbot.style_updater import StyleUpdater
+from src.templates.template import TEMPLATE_REGISTRY
+from src.chart_formatter import apply_vba_formatting
+from src.excel_exporter import create_excel_report
+from src.ui_components import (
     render_sidebar_template_selection,
     render_sidebar_file_upload,
     render_sidebar_chart_settings,
