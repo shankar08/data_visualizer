@@ -48,6 +48,9 @@ class ChartModifierAgent:
                                 - "secondary_color"
                                 - "grid"
                                 - "chart_title"
+                                - "x_axis_title"
+                                - "y_axis_title"
+                                - "secondary_y_axis_title"
 
                                 Rules:
                                 1. Only include parameters explicitly requested
@@ -75,6 +78,21 @@ class ChartModifierAgent:
 
                                 User: "Add title Sales Overview"
                                 Response: {{"chart_title": "Sales Overview"}}
+
+                                User: "Set x axis title Month"
+                                Response: {{ "x_axis_title": "Month" }}
+
+                                User: "Set y axis title Revenue"
+                                Response: {{ "y_axis_title": "Revenue" }}
+
+                                User: "Label y-axis as Sales ($)"
+                                Response: {{ "y_axis_title": "Sales ($)" }}
+
+                                User: "Remove x axis title"
+                                Response: {{"x_axis_title": ""}}
+
+                                User: "Remove y axis title"
+                                Response: {{"y_axis_title": ""}}
 
                                 Now respond to the user's command.
                                 """

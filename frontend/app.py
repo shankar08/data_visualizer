@@ -42,8 +42,9 @@ def main():
         from openpyxl.chart.shapes import GraphicalProperties
         from openpyxl.drawing.text import Font as DrawingFont
         
-        # 1. REMOVE TITLE
-        chart.title = None
+        # 1. REMOVE CHART TITLE ONLY IF NOT PROVIDED
+        if not template_style.get("chart_title"):
+            chart.title = None
         
         # 2. SET GAP WIDTH = 50%
         if hasattr(chart, 'gapWidth'):
@@ -226,7 +227,7 @@ def main():
             )
 
         st.subheader("📝 Edit Data")
-        edited_df = st.data_editor(df, use_container_width=True)
+        edited_df = st.data_editor(df, width="stretch")
 
         if aggregation != "None":
             if aggregation == "Sum":
@@ -258,6 +259,24 @@ def main():
         })
 
         fig, ax1 = plt.subplots(figsize=(8, 4))
+        # Axis titles
+        if TEMPLATE_STYLE.get("x_axis_title"):
+            ax1.set_xlabel(
+                TEMPLATE_STYLE["x_axis_title"],
+                fontsize=TEMPLATE_STYLE["font_size"],
+                color=TEMPLATE_STYLE["axis_color"]
+            )
+        else:
+            ax1.set_xlabel("")
+
+        if TEMPLATE_STYLE.get("y_axis_title"):
+            ax1.set_ylabel(
+                TEMPLATE_STYLE["y_axis_title"],
+                fontsize=TEMPLATE_STYLE["font_size"],
+                color=TEMPLATE_STYLE["axis_color"]
+            )
+        else:
+            ax1.set_ylabel("")
         for spine in ["top", "right"]:
             ax1.spines[spine].set_visible(False)
         for spine in ["bottom", "left"]:
@@ -354,10 +373,27 @@ def main():
             chart_type_to_use = template_config.get("default_chart_type", chart_type)
 
             if chart_type_to_use in ["Bar Chart", "Line Chart"]:
+                if TEMPLATE_STYLE.get("chart_title"):
+                    chart.title = TEMPLATE_STYLE["chart_title"]
+                else:
+                    chart.title = None
                 chart = BarChart() if chart_type_to_use == "Bar Chart" else LineChart()
                 
-                chart.y_axis.title = None
-                chart.x_axis.title = None
+                apply_vba_formatting(chart, TEMPLATE_STYLE)
+
+                # Primary axis titles
+                if TEMPLATE_STYLE.get("x_axis_title"):
+                    chart.x_axis.title = TEMPLATE_STYLE["x_axis_title"]
+
+                if TEMPLATE_STYLE.get("y_axis_title"):
+                    chart.y_axis.title = TEMPLATE_STYLE["y_axis_title"]
+
+                if secondary_y:
+                    sec_chart = LineChart()
+                    sec_chart.y_axis.axId = 200
+
+                    if TEMPLATE_STYLE.get("secondary_y_axis_title"):
+                        sec_chart.y_axis.title = TEMPLATE_STYLE["secondary_y_axis_title"]
 
                 for idx, col_name in enumerate(primary_y):
                     y_idx = plot_df.columns.get_loc(col_name) + 1
@@ -383,9 +419,7 @@ def main():
                             sec_chart.series[idx].graphicalProperties.solidFill = TEMPLATE_STYLE.get("secondary_color", "#ff7f0e").lstrip("#")
 
                     apply_vba_formatting(sec_chart, TEMPLATE_STYLE)
-                    chart += sec_chart
-                
-                apply_vba_formatting(chart, TEMPLATE_STYLE)
+                    chart += sec_chart                
                 
             else:
                 chart = PieChart()
@@ -430,21 +464,21 @@ def main():
     if st.session_state.agent is None:
         st.warning("AI Assistant is not available. Check OPENAI_API_KEY.")
     else:
-        chat_container = st.container()
-
-        with chat_container:
-            # Chat input
+        # ---------- CHAT FORM ----------
+        with st.form("chat_form", clear_on_submit=True):
             col1, col2 = st.columns([6, 1])
+
             with col1:
                 user_message = st.text_input(
-                    "Type a command (e.g. 'chart title Hello', 'remove grid', 'make font Arial 10')",
-                    key="chat_input_bottom"
+                    "Type a command (e.g. 'chart title Hello', 'remove grid', 'make font Arial 10')"
                 )
-            with col2:
-                send = st.button("Send", width="stretch")
 
-            if send and user_message.strip():
+            with col2:
+                submitted = st.form_submit_button("Send")
+
+            if submitted and user_message.strip():
                 current_style = TEMPLATE_STYLE
+
                 modifications = st.session_state.agent.process_command(
                     user_message,
                     current_style
@@ -471,29 +505,30 @@ def main():
                 else:
                     st.error("❌ I couldn’t understand that command.")
 
-            # Chat history
-            if st.session_state.chat_history:
-                with st.expander("💬 Conversation", expanded=False):
-                    for msg in st.session_state.chat_history:
-                        if msg["role"] == "user":
-                            st.markdown(f"**You:** {msg['content']}")
-                        else:
-                            st.markdown(f"**AI:** {msg['content']}")
+        # ---------- CHAT HISTORY ----------
+        if st.session_state.chat_history:
+            with st.expander("💬 Conversation", expanded=False):
+                for msg in st.session_state.chat_history:
+                    if msg["role"] == "user":
+                        st.markdown(f"**You:** {msg['content']}")
+                    else:
+                        st.markdown(f"**AI:** {msg['content']}")
 
-            # Controls
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("🔄 Reset Style"):
-                    st.session_state.custom_style = None
-                    st.session_state.chat_history = []
-                    st.session_state.agent.reset_conversation()
-                    st.rerun()
+        # ---------- CONTROLS (OUTSIDE FORM) ----------
+        c1, c2 = st.columns(2)
 
-            with c2:
-                if st.button("🗑️ Clear Chat"):
-                    st.session_state.chat_history = []
-                    st.session_state.agent.reset_conversation()
-                    st.rerun()
+        with c1:
+            if st.button("🔄 Reset Style"):
+                st.session_state.custom_style = None
+                st.session_state.chat_history = []
+                st.session_state.agent.reset_conversation()
+                st.rerun()
+
+        with c2:
+            if st.button("🗑️ Clear Chat"):
+                st.session_state.chat_history = []
+                st.session_state.agent.reset_conversation()
+                st.rerun()
 
 if __name__ == "__main__":
     main()
