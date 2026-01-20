@@ -3,4 +3,4 @@
 
 # Env files
 .env
-venv
+.venv
