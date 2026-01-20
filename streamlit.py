@@ -1,12 +1,13 @@
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-FRONTEND_DIR = BASE_DIR / "frontend"
+ROOT = Path(__file__).resolve().parent
+SRC = ROOT / "src"
 
-sys.path.insert(0, str(FRONTEND_DIR))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
-# Import app and run main()
 from frontend.app import main
 
-main()
+if __name__ == "__main__":
+    main()
