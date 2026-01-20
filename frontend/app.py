@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 import os
 from dotenv import load_dotenv
-from templates.template import TEMPLATE_REGISTRY
+from frontend.templates.template import TEMPLATE_REGISTRY
 
 # Add project root to path for imports (MUST be before template import)
 BASE_DIR = Path(__file__).resolve().parent.parent
