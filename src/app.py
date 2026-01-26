@@ -39,17 +39,30 @@ def setup_fonts():
 def process_dataframe(df, col_x, aggregation, numeric_cols):
     """Process dataframe with aggregation if needed"""
     if aggregation != "None":
-        if aggregation == "Sum":
-            plot_df = df.groupby(col_x)[numeric_cols].sum().reset_index()
-        elif aggregation == "Mean":
-            plot_df = df.groupby(col_x)[numeric_cols].mean().reset_index()
-        elif aggregation == "Count":
-            plot_df = df.groupby(col_x)[numeric_cols].count().reset_index()
+        # Exclude the groupby column from aggregation to avoid conflicts
+        agg_cols = [col for col in numeric_cols if col != col_x]
+        
+        if not agg_cols:
+            # If col_x is the only numeric column, just get unique values
+            plot_df = df[[col_x]].drop_duplicates().reset_index(drop=True)
+        else:
+            if aggregation == "Sum":
+                plot_df = df.groupby(col_x)[agg_cols].sum().reset_index()
+            elif aggregation == "Mean":
+                plot_df = df.groupby(col_x)[agg_cols].mean().reset_index()
+            elif aggregation == "Count":
+                plot_df = df.groupby(col_x)[agg_cols].count().reset_index()
+            else:
+                plot_df = df.copy()
     else:
         plot_df = df.copy()
     
     # Remove NaN values that might occur during aggregation
-    plot_df = plot_df.dropna(subset=numeric_cols, how='all')
+    if numeric_cols:
+        valid_numeric_cols = [col for col in numeric_cols if col in plot_df.columns]
+        if valid_numeric_cols:
+            plot_df = plot_df.dropna(subset=valid_numeric_cols, how='all')
+    
     return plot_df
 
 
@@ -249,6 +262,9 @@ def main():
                 st.error("❌ Please select at least one primary Y-axis column.")
                 return
 
+            # After line 262 (st.data_editor)
+            if aggregation != "None":
+                st.info(f"📊 Data is being aggregated by **{col_x}** using **{aggregation}**")
             # =====================================================
             # DATA EDITING
             # =====================================================
@@ -256,7 +272,9 @@ def main():
             edited_df = st.data_editor(df, width="stretch")
 
             # Process dataframe
-            plot_df = process_dataframe(edited_df, col_x, aggregation, numeric_cols)
+            # Calculate numeric_cols from edited_df instead
+            edited_numeric_cols = edited_df.select_dtypes(include=["number"]).columns.tolist()
+            plot_df = process_dataframe(edited_df, col_x, aggregation, edited_numeric_cols)
 
             # =====================================================
             # STYLE SETTINGS
