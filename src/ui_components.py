@@ -24,7 +24,7 @@ def render_sidebar_file_upload():
     return uploaded_file
 
 
-def render_sidebar_chart_settings(df, template_config, chart_type=None):
+def render_sidebar_chart_settings(df, template_config):
     """Render chart configuration options"""
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
     all_cols = df.columns.tolist()
@@ -45,17 +45,26 @@ def render_sidebar_chart_settings(df, template_config, chart_type=None):
     default_secondary = [c for c in template_config.get("default_secondary_y", []) if c in numeric_cols]
 
     if selected_chart_type == "Pie Chart":
-        primary_y = [st.sidebar.selectbox(
-            "Y-axis",
-            numeric_cols,
-            index=0 if not default_primary else numeric_cols.index(default_primary[0])
-        )]
+        if not numeric_cols:
+            st.sidebar.error("❌ No numeric columns available for pie chart")
+            primary_y = []
+        else:
+            # Safer default index calculation
+            default_index = 0
+            if default_primary and default_primary[0] in numeric_cols:
+                default_index = numeric_cols.index(default_primary[0])
+            
+            primary_y = [st.sidebar.selectbox(
+                "Y-axis",
+                numeric_cols,
+                index=default_index
+            )]
         secondary_y = []
     else:
         primary_y = st.sidebar.multiselect(
             "Primary Y-axis",
             numeric_cols,
-            default=default_primary or numeric_cols[:1]
+            default=default_primary or (numeric_cols[:1] if numeric_cols else [])
         )
         secondary_y = st.sidebar.multiselect(
             "Secondary Y-axis",
@@ -69,6 +78,17 @@ def render_sidebar_chart_settings(df, template_config, chart_type=None):
 def render_style_settings(template_style):
     """Render current style settings expander"""
     with st.expander("🎨 Current Style Settings"):
+        # Show titles if they exist
+        if template_style.get("chart_title") or template_style.get("x_axis_title") or template_style.get("y_axis_title"):
+            st.write("**Titles:**")
+            if template_style.get("chart_title"):
+                st.write(f"- Chart: {template_style['chart_title']}")
+            if template_style.get("x_axis_title"):
+                st.write(f"- X-axis: {template_style['x_axis_title']}")
+            if template_style.get("y_axis_title"):
+                st.write(f"- Y-axis: {template_style['y_axis_title']}")
+            st.divider()
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.write(f"**Font:** {template_style['font_family']} {template_style['font_size']}pt")

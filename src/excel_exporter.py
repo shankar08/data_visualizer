@@ -4,7 +4,14 @@ from openpyxl import Workbook
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.chart import BarChart, LineChart, PieChart, Reference
 from openpyxl.chart.label import DataLabelList
+from openpyxl.drawing.fill import SolidColorFillProperties, ColorChoice
 from .chart_formatter import apply_vba_formatting
+
+
+def hex_to_rgb(hex_color):
+    """Convert hex color to RGB string for openpyxl"""
+    hex_color = hex_color.lstrip('#')
+    return hex_color.upper()
 
 
 def create_excel_report(plot_df, col_x, primary_y, secondary_y, chart_type, 
@@ -45,7 +52,7 @@ def create_excel_report(plot_df, col_x, primary_y, secondary_y, chart_type,
     table.tableStyleInfo = style
     ws.add_table(table)
 
-    # Create and format chart
+    # Create and format chart - PASS template_style here
     chart = create_chart(ws, plot_df, col_x, primary_y, secondary_y, 
                         chart_type, template_style, end_row)
     
@@ -67,14 +74,17 @@ def create_chart(ws, plot_df, col_x, primary_y, secondary_y, chart_type,
     
     if chart_type in ["Bar Chart", "Line Chart"]:
         chart = BarChart() if chart_type == "Bar Chart" else LineChart()
+        
+        # Apply formatting BEFORE setting titles
         apply_vba_formatting(chart, template_style)
 
+        # Chart title
         if template_style.get("chart_title"):
             chart.title = template_style["chart_title"]
         else:
             chart.title = None
 
-        # Primary axis titles
+        # Axis titles
         if template_style.get("x_axis_title"):
             chart.x_axis.title = template_style["x_axis_title"]
 
@@ -87,8 +97,9 @@ def create_chart(ws, plot_df, col_x, primary_y, secondary_y, chart_type,
             data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
             chart.add_data(data, titles_from_data=True)
             
+            # Apply primary color to series
             if chart.series and idx < len(chart.series):
-                primary_color = template_style["primary_color"].lstrip("#")
+                primary_color = hex_to_rgb(template_style["primary_color"])
                 chart.series[idx].graphicalProperties.solidFill = primary_color
 
         # Set categories
@@ -108,8 +119,9 @@ def create_chart(ws, plot_df, col_x, primary_y, secondary_y, chart_type,
                 data = Reference(ws, min_col=y_idx, min_row=1, max_row=end_row)
                 sec_chart.add_data(data, titles_from_data=True)
                 
+                # Apply secondary color
                 if sec_chart.series and idx < len(sec_chart.series):
-                    secondary_color = template_style.get("secondary_color", "#ff7f0e").lstrip("#")
+                    secondary_color = hex_to_rgb(template_style.get("secondary_color", "#ff7f0e"))
                     sec_chart.series[idx].graphicalProperties.solidFill = secondary_color
 
             apply_vba_formatting(sec_chart, template_style)
